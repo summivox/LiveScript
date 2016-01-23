@@ -97,6 +97,9 @@ exports <<<
                 | '(' => i += @do-lsch-shell code, i, '$(', ')'
                 | '"' => i += @do-lsch-quote code, i, '"', '"'
                 | otherwise => i += @do-ID code, i
+                if @shell and @parens.length == 0
+                    @rest = code.slice i
+                    i += 9e9
             | otherwise => i += @do-ID code, i or @do-literal code, i or @do-space code, i
         # Close up all remaining open blocks.
         @dedent @dent
@@ -856,16 +859,11 @@ exports <<<
                 for word in str.slice(0, i).match /\S+/g or ''
                     parts.push ['S' @count-lines word, old-line; old-line, old-column]
                 [old-line, old-column] = [@line, @column]
-            if shell
-                ...
-                # nested = @interpolate-shell str, index, shell-begin, shell-end
-                # FIXME: this approach is kinda broken
-            else
-                clone = exports with {inter: end, @emender}
-                nested = clone.tokenize str.slice(i + 1), {@line, column: @column + 1, +raw}
-                delta = str.length - clone.rest.length
-                @count-lines str.slice(i, delta)
-                {rest: str} = clone
+            clone = exports with {shell, inter: end, @emender}
+            nested = clone.tokenize str.slice(i + !shell), {@line, column: @column + 1, +raw}
+            delta = str.length - clone.rest.length
+            @count-lines str.slice(i, delta)
+            {rest: str} = clone
             while nested.0?.0 is 'NEWLINE' then nested.shift!
             if nested.length
                 nested.unshift ['(' '(' old-line, old-column]

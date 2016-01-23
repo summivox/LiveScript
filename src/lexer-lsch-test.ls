@@ -30,9 +30,9 @@ parser <<<
 
 src = '''
   for i til 10
-    $(rm -rf (a + b c d) ~/de/fgh/ijk)
-    $(rm -rf (a + b(c)) ~/de/fgh/ijk)
-    #$(rm -rf (a + $(ls) .pipe $(grep b)) $(which cat) ~/cde/fgh/ijk )
+    #$(rm -rf (a + b c d) ~/de/fgh/ijk)
+    #$(rm -rf (a + b(c)) ~/de/fgh/ijk)
+    $(rm -rf (a + $(ls) .pipe $(grep b)) $(which cat) ~/cde/fgh/ijk )
     #$"ls"
 '''
 lexed = lexer.lex src
