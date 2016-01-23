@@ -10,6 +10,8 @@
 # Some potential ambiguity in the grammar has been avoided by
 # pushing some extra smarts into Lexer.
 
+# vim: sw=4 et
+
 exports <<<
     #### Public Methods
 
@@ -90,6 +92,11 @@ exports <<<
                 if '`' is code.char-at i + 1
                 then i += @do-JS code, i
                 else i += @do-literal code, i
+            | '$' => # LSCH sub-shell
+                switch code.char-at i + 1
+                | '(' => i += @do-lsch-shell code, i, '$(', ')'
+                | '"' => i += @do-lsch-quote code, i, '"', '"'
+                | otherwise => i += @do-ID code, i
             | otherwise => i += @do-ID code, i or @do-literal code, i or @do-space code, i
         # Close up all remaining open blocks.
         @dedent @dent
@@ -553,12 +560,10 @@ exports <<<
         case '[' '{'
             @adi!
             @closes.push ']}'char-at val is '{'
-        case '}'
-            if @inter and val is not @closes[*-1]
+        case '}' ']' ')'
+            if val is @inter and not @closes[*-1]?.startsWith? val
                 @rest = code.slice index + 1
                 return 9e9
-            fallthrough
-        case ']' ')'
             if tag is ')' and @last.0 in <[ +- COMPARE LOGIC MATH POWER SHIFT BITWISE
                                             CONCAT COMPOSE RELATION PIPE BACKPIPE IMPORT
                                             CLONEPORT ASSIGN ]>
@@ -774,7 +779,7 @@ exports <<<
                 str.=slice delta = i + 1 + length
                 parts.push ['TOKENS' nested = [[tag, id, @line, @column]]]
             else
-                clone = exports with {+inter, @emender}
+                clone = exports with {inter: '}', @emender}
                 nested = clone.tokenize str.slice(i + 2), {@line, column: @column + 2, +raw}
                 delta = str.length - clone.rest.length
                 @count-lines str.slice(i, delta)
@@ -810,6 +815,83 @@ exports <<<
             tokens.push joint ++ tokens[*-1].2 ++ tokens[*-1].3
         --tokens.length
         @token right, '', callable
+
+    # lsch: $( ... ) shell invocations {{{
+
+    # modified from @do-string
+    do-lsch-shell: (code, index, begin, end) ->
+        parts = @interpolate-shell code, index, begin, end
+        @add-interpolated-shell parts, unlines
+        return parts.size
+
+    # modified from @interpolate
+    interpolate-shell: !(str, idx, begin, end) ->
+        parts = []
+        end0 = end.char-at 0
+        pos = 0
+        i = -1
+        str.=slice idx + 2 # skip $(
+        [old-line, old-column] = [@line, @column]
+        @count-lines end
+        while ch = str.char-at ++i
+            switch ch
+            case end0
+                continue unless end is str.slice i, i + end.length
+                for word in str.slice(0, i).match /\S+/g or ''
+                    parts.push ['S' @count-lines word, old-line; old-line, old-column]
+                @count-lines end
+                return parts <<< size: pos + i + begin.length + end.length
+            case '$'
+                if str.char-at(i + 1) is '('
+                    shell = true
+                    shell-begin = '$('
+                    shell-end = ')'
+                else continue
+            case '('
+                shell = false # expr within shell
+            case '\\' then ++i; continue
+            default continue
+            if i or nested and not stringified
+                stringified = true
+                for word in str.slice(0, i).match /\S+/g or ''
+                    parts.push ['S' @count-lines word, old-line; old-line, old-column]
+                [old-line, old-column] = [@line, @column]
+            if shell
+                ...
+                # nested = @interpolate-shell str, index, shell-begin, shell-end
+                # FIXME: this approach is kinda broken
+            else
+                clone = exports with {inter: end, @emender}
+                nested = clone.tokenize str.slice(i + 1), {@line, column: @column + 1, +raw}
+                delta = str.length - clone.rest.length
+                @count-lines str.slice(i, delta)
+                {rest: str} = clone
+            while nested.0?.0 is 'NEWLINE' then nested.shift!
+            if nested.length
+                nested.unshift ['(' '(' old-line, old-column]
+                nested.push        [')' ')' @line, @column-1]
+                parts.push ['TOKENS' nested]
+            [old-line, old-column] = [@line, @column]
+            pos += delta
+            i = -1
+        @carp "missing `#end`"
+
+    add-interpolated-shell: !(parts, nlines) ->
+        {tokens, last} = this
+        callable = @adi!
+        tokens.push ['ID', '$', last.2, last.3]
+        tokens.push ['CALL(', '(', last.2, last.3]
+        for t, i in parts
+            if t.0 is 'TOKENS'
+                tokens.push ...t.1
+            else
+                continue if i > 1 and not t.1
+                tokens.push ['STRNUM' nlines @string '"' t.1; t.2, t.3]
+            tokens.push [',' ',' tokens[*-1].2, tokens[*-1].3]
+        --tokens.length
+        @token ')CALL', ')', callable
+
+    # }}}
 
     # Records a string/number token, supplying implicit dot if applicable.
     strnum: !-> @token 'STRNUM' it, @adi! || @last.0 is 'DOT'
