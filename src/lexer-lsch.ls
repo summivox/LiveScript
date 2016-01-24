@@ -43,7 +43,7 @@ exports <<<
     tokenize: (code, o) ->
         @inter or code.=replace /[\r\u2028\u2029\uFEFF]/g ''
         # Prepend a newline to handle leading INDENT.
-        code = '\n' + code
+        @inter-shell or code = '\n' + code
         # Stream of parsed tokens,
         # initialized with a NEWLINE token to ensure `@last` always exists.
         @tokens = [@last = ['NEWLINE' '\n' 0 0]]
@@ -98,11 +98,15 @@ exports <<<
                 | '(' => i += @do-lsch-shell code, i, '$(', ')'
                 | '"' => i += @do-lsch-quote code, i, '"', '"'
                 | otherwise => i += @do-ID code, i
-                if @shell and @parens.length == 0
-                    @rest = code.slice i
-                    i += 9e9
             # }}}
             | otherwise => i += @do-ID code, i or @do-literal code, i or @do-space code, i
+
+            # LSCH: wholesale-reused sub-lexer termination
+            if @inter-shell
+                @rest = code.slice i
+                i += 9e9
+
+
         # Close up all remaining open blocks.
         @dedent @dent
         @carp "missing `#that`" if @closes.pop!
@@ -848,11 +852,19 @@ exports <<<
                     newline: end is '\n'
                     size: pos + i + begin.length + end.length - (end is '\n')
             case '$'
+                # shell in shell
                 if str.char-at(i + 1) is '('
-                then shell = true # shell in shell
+                    inter = ')'
+                    inter-shell = true
                 else continue
+            case "'"
+                # single-quoted string literal in shell
+                inter = "'"
+                inter-shell = true
             case '('
-                shell = false # expr in shell
+                # expr in shell
+                inter = ')'
+                inter-shell = false
             case '\\' then i++; continue
             default continue
             if i or nested and not stringified
@@ -860,8 +872,8 @@ exports <<<
                 for word in str.slice(0, i).match /\S+/g or ''
                     parts.push ['S' @count-lines word, old-line; old-line, old-column]
                 [old-line, old-column] = [@line, @column]
-            clone = exports with {shell, inter: end, @emender}
-            nested = clone.tokenize str.slice(i + !shell), {@line, column: @column + 1, +raw}
+            clone = exports with {inter, inter-shell, @emender}
+            nested = clone.tokenize str.slice(i + !inter-shell), {@line, column: @column + 1, +raw}
             delta = str.length - clone.rest.length
             @count-lines str.slice(i, delta)
             {rest: str} = clone
@@ -885,7 +897,7 @@ exports <<<
                 tokens.push ...t.1
             else
                 continue if i > 1 and not t.1
-                tokens.push ['STRNUM' nlines @string '"' t.1; t.2, t.3]
+                tokens.push ['STRNUM' nlines @string "'" t.1; t.2, t.3]
             tokens.push [',' ',' tokens[*-1].2, tokens[*-1].3]
         tokens.pop!
         @token ')CALL', ')', callable

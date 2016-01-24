@@ -40,7 +40,7 @@ src = '''
         for gcc
   $(rm -rf (a b c [d, e, f]) gh/ijk)
   $(rm -rf (a + b(c)) ~/de/fgh/ijk)
-  $(rm -rf (a + $(b) .pipe $(c d)) $(e f g) (h + $((i + $(j)))) -k-=)
+  $(rm (a + $(b) .pipe $(c d)) $(e f g) (h + $((i + $(j)))) 'k l m \\n')
   #$"ls"
 '''
 lexed = lexer.lex src
