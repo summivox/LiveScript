@@ -30,13 +30,20 @@ parser <<<
 
 src = '''
   for i til 10
-    #$(rm -rf (a + b c d) ~/de/fgh/ijk)
-    #$(rm -rf (a + b(c)) ~/de/fgh/ijk)
-    $(rm -rf (a + $(ls) .pipe $(grep b)) $(which cat) ($(($(a)))) ~/cde/fgh/ijk )
+    `ls
+    `ls | grep b
+    `foo` .pipe `bar
+    `foo` .pipe `bar`
+    `long long long \\
+      is too long\\
+      for gcc
+    $(rm -rf (a + b c d) ~/de/fgh/ijk)
+    $(rm -rf (a + b(c)) ~/de/fgh/ijk)
+    $(rm -rf (a + $(ls) .pipe $(grep b)) $(which cat) ($(($(a)))) ~/cde)
     #$"ls"
 '''
 lexed = lexer.lex src
-console.log lexed
+#console.log lexed
 ast = parser.parse lexed
 compiled = ast.compile-root {}
 console.log compiled.toString!

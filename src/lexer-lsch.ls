@@ -88,11 +88,12 @@ exports <<<
                 | '*' => i += @do-comment code, i
                 | '/' => i += @do-heregex code, i
                 | _   => i += @do-regex code, i or @do-literal code, i
+            # LSCH shell expr {{{
             | '`' =>
                 if '`' is code.char-at i + 1
-                then i += @do-JS code, i
-                else i += @do-literal code, i
-            | '$' => # LSCH sub-shell
+                then i += @do-lsch-fence code, i, '`', '`' # TODO
+                else i += @do-lsch-shell code, i, '`', '`'
+            | '$' =>
                 switch code.char-at i + 1
                 | '(' => i += @do-lsch-shell code, i, '$(', ')'
                 | '"' => i += @do-lsch-quote code, i, '"', '"'
@@ -100,6 +101,7 @@ exports <<<
                 if @shell and @parens.length == 0
                     @rest = code.slice i
                     i += 9e9
+            # }}}
             | otherwise => i += @do-ID code, i or @do-literal code, i or @do-space code, i
         # Close up all remaining open blocks.
         @dedent @dent
@@ -819,7 +821,7 @@ exports <<<
         --tokens.length
         @token right, '', callable
 
-    # lsch: $( ... ) shell invocations {{{
+    # LSCH: $( ... ) shell invocations {{{
 
     # modified from @do-string
     do-lsch-shell: (code, index, begin, end) ->
@@ -833,26 +835,27 @@ exports <<<
         end0 = end.char-at 0
         pos = 0
         i = -1
-        str.=slice idx + 2 # skip $(
+        str.=slice idx + begin.length
         [old-line, old-column] = [@line, @column]
         @count-lines end
         while ch = str.char-at ++i
             switch ch
-            case end0
+            case '\n' end0
+                if end0 is '`' and ch is '\n' then end = '\n'
                 continue unless end is str.slice i, i + end.length
-                for word in str.slice(0, i).match /\S+/g or ''
+                for word in str.slice(0, i) .replace /\\\n/g, '\n' .match /\S+/g or []
                     parts.push ['S' @count-lines word, old-line; old-line, old-column]
                 @count-lines end
-                return parts <<< size: pos + i + begin.length + end.length
+                return parts <<<
+                    size: pos + i + begin.length + end.length
+                    newline: end is '\n'
             case '$'
                 if str.char-at(i + 1) is '('
-                    shell = true
-                    shell-begin = '$('
-                    shell-end = ')'
+                then shell = true # shell in shell
                 else continue
             case '('
-                shell = false # expr within shell
-            case '\\' then ++i; continue
+                shell = false # expr in shell
+            case '\\' then i++; continue
             default continue
             if i or nested and not stringified
                 stringified = true
@@ -867,14 +870,14 @@ exports <<<
             while nested.0?.0 is 'NEWLINE' then nested.shift!
             if nested.length
                 nested.unshift ['(' '(' old-line, old-column]
-                nested.push        [')' ')' @line, @column-1]
+                nested.push    [')' ')' @line, @column-1]
                 parts.push ['TOKENS' nested]
             [old-line, old-column] = [@line, @column]
             pos += delta
             i = -1
         @carp "missing `#end`"
 
-    add-interpolated-shell: !(parts, nlines) ->
+    add-interpolated-shell: !(parts, nlines, end) ->
         {tokens, last} = this
         callable = @adi!
         tokens.push ['ID', '$', last.2, last.3]
@@ -886,8 +889,9 @@ exports <<<
                 continue if i > 1 and not t.1
                 tokens.push ['STRNUM' nlines @string '"' t.1; t.2, t.3]
             tokens.push [',' ',' tokens[*-1].2, tokens[*-1].3]
-        --tokens.length
+        tokens.pop!
         @token ')CALL', ')', callable
+        if parts.newline then @token 'NEWLINE', '\n'
 
     # }}}
 
