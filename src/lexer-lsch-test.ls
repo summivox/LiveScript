@@ -29,18 +29,19 @@ parser <<<
 # }}}
 
 src = '''
-  for i til 10
-    `ls
-    `ls | grep b
-    `foo` .pipe `bar
-    `foo` .pipe `bar`
-    `long long long \\
-      is too long\\
-      for gcc
-    $(rm -rf (a + b c d) ~/de/fgh/ijk)
-    $(rm -rf (a + b(c)) ~/de/fgh/ijk)
-    $(rm -rf (a + $(ls) .pipe $(grep b)) $(which cat) ($(($(a)))) ~/cde)
-    #$"ls"
+  if excited
+    for i til 10
+      `ls
+      `ls | grep b
+      `foo` .pipe `bar
+      `foo` .pipe `bar`
+      `long long long \\
+        is too long\\
+        for gcc
+  $(rm -rf (a b c [d, e, f]) gh/ijk)
+  $(rm -rf (a + b(c)) ~/de/fgh/ijk)
+  $(rm -rf (a + $(b) .pipe $(c d)) $(e f g) (h + $((i + $(j)))) -k-=)
+  #$"ls"
 '''
 lexed = lexer.lex src
 #console.log lexed

@@ -827,7 +827,7 @@ exports <<<
     do-lsch-shell: (code, index, begin, end) ->
         parts = @interpolate-shell code, index, begin, end
         @add-interpolated-shell parts, unlines
-        return parts.size
+        parts.size
 
     # modified from @interpolate
     interpolate-shell: !(str, idx, begin, end) ->
@@ -837,7 +837,6 @@ exports <<<
         i = -1
         str.=slice idx + begin.length
         [old-line, old-column] = [@line, @column]
-        @count-lines end
         while ch = str.char-at ++i
             switch ch
             case '\n' end0
@@ -845,10 +844,9 @@ exports <<<
                 continue unless end is str.slice i, i + end.length
                 for word in str.slice(0, i) .replace /\\\n/g, '\n' .match /\S+/g or []
                     parts.push ['S' @count-lines word, old-line; old-line, old-column]
-                @count-lines end
                 return parts <<<
-                    size: pos + i + begin.length + end.length
                     newline: end is '\n'
+                    size: pos + i + begin.length + end.length - (end is '\n')
             case '$'
                 if str.char-at(i + 1) is '('
                 then shell = true # shell in shell
@@ -891,7 +889,6 @@ exports <<<
             tokens.push [',' ',' tokens[*-1].2, tokens[*-1].3]
         tokens.pop!
         @token ')CALL', ')', callable
-        if parts.newline then @token 'NEWLINE', '\n'
 
     # }}}
 
