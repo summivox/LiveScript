@@ -828,6 +828,7 @@ exports <<<
     # LSCH: $( ... ) shell invocations {{{
 
     # modified from @do-string
+    # TODO: integrate all 3 (because we may need extra processing)
     do-lsch-shell: (code, index, begin, end) ->
         parts = @interpolate-shell code, index, begin, end
         @add-interpolated-shell parts, unlines

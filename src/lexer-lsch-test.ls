@@ -41,6 +41,7 @@ src = '''
   $(rm -rf (a b c [d, e, f]) gh/ijk)
   $(rm -rf (a + b(c)) ~/de/fgh/ijk)
   $(rm (a + $(b) .pipe $(c d)) $(e f g) (h + $((i + $(j)))) 'k l m \\n')
+  $(sleep 5 (async: true))
   #$"ls"
 '''
 lexed = lexer.lex src
