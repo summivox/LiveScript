@@ -87,17 +87,18 @@ exports <<<
                 | '/' => i += @do-heregex code, i
                 | _   => i += @do-regex code, i or @do-literal code, i
             # LSCH shell expr {{{
-            | '`' =>
+            | '`'
                 if '`' is code.char-at i + 1
                 then i += @do-lsch-fence code, i, '`', '`' # TODO
                 else i += @do-lsch-shell code, i, '`', '`'
-            | '$' =>
+            | '$' '&'
                 switch code.char-at i + 1
-                | '(' => i += @do-lsch-shell code, i, '$(', ')'
+                | '(' => i += @do-lsch-shell code, i, "#c(", ')'
                 | '"' => i += @do-lsch-quote code, i, '"', '"'
-                | otherwise => i += @do-ID code, i
+                # NOTE: parallel code -- too complicated to do the "fallthrough" dance
+                | _ => i += @do-ID code, i or @do-literal code, i or @do-space code, i
             # }}}
-            | otherwise => i += @do-ID code, i or @do-literal code, i or @do-space code, i
+            | _ => i += @do-ID code, i or @do-literal code, i or @do-space code, i
 
             # LSCH: wholesale-reused sub-lexer termination
             if @inter-shell
@@ -824,68 +825,119 @@ exports <<<
         --tokens.length
         @token right, '', callable
 
-    # LSCH: $( ... ) shell invocations {{{
+    # LSCH: shell invocations {{{
 
-    # modified from @do-string
-    # TODO: integrate all 3 (because we may need extra processing)
-    do-lsch-shell: (code, index, begin, end) ->
-        parts = @interpolate-shell code, index, begin, end
-        @add-interpolated-shell parts, unlines
-        parts.size
+    do-lsch-shell: (code, offset, open, close) ->
+        # init
+        tokens = []
+        close0 = close.char-at 0
+        [open-l, open-c] = [@line, @column]
+        # skip open
+        @count-lines code.substr(offset, open.length)
+        i = offset + open.length
 
-    # modified from @interpolate
-    interpolate-shell: !(str, idx, begin, end) ->
-        parts = []
-        end0 = end.char-at 0
-        pos = 0
-        i = -1
-        str.=slice idx + begin.length
-        [old-line, old-column] = [@line, @column]
-        while ch = str.char-at ++i
-            switch ch
-            case '\n' end0
-                if end0 is '`' and ch is '\n' then end = '\n'
-                continue unless end is str.slice i, i + end.length
-                for word in str.slice(0, i) .replace /\\\n/g, '\n' .match /\S+/g or []
-                    parts.push ['S' @count-lines word, old-line; old-line, old-column]
-                return parts <<<
-                    newline: end is '\n'
-                    size: pos + i + begin.length + end.length - (end is '\n')
-            case '$'
-                # shell in shell
-                if str.char-at(i + 1) is '('
-                    inter = ')'
-                    inter-shell = true
-                else continue
-            case "'"
-                # single-quoted string literal in shell
-                inter = "'"
-                inter-shell = true
-            case '('
-                # expr in shell
-                inter = ')'
-                inter-shell = false
-            case '\\' then i++; continue
-            default continue
-            if i or nested and not stringified
-                stringified = true
-                for word in str.slice(0, i).match /\S+/g or ''
-                    parts.push ['S' @count-lines word, old-line; old-line, old-column]
-                [old-line, old-column] = [@line, @column]
-            clone = exports with {inter, inter-shell, @emender}
-            nested = clone.tokenize str.slice(i + !inter-shell), {@line, column: @column + 1, +raw}
-            delta = str.length - clone.rest.length
-            @count-lines str.slice(i, delta)
-            {rest: str} = clone
+        # blocking call: `await Shell(...)`
+        # non-blocking call: `ShellBg(...)`
+        blocking = open in <[ &( ` ]>#
+
+        # unescaped EOL implicitly closes backtick, so plain word must not skip EOL
+        PLAIN_WORD = if open is \` then LSCH_PLAIN_WORD_LINE else LSCH_PLAIN_WORD
+
+        # scan
+        loop
+            switch ch = code.charAt i
+            | \\n, close0
+                if close0 is '`' and ch is \\n then close = \\n
+                if close is code.substr(i, close.length)
+                    done!
+                    return i - offset + close.length
+                @count-lines ch
+                i++
+            | \$ \&
+                if code.char-at(i + 1) is \( then handle-nested \), true # shell
+                else if ch is \& and open is \`
+                    blocking = false
+                    @count-lines ch
+                    i++
+            | \' \" => handle-nested ch, true # string literal
+            | \( => handle-nested \), false # expr
+            | \|
+                [l, c] = [@line, @column]
+                tokens.push do
+                    [\)CALL \) l, c]
+                    [\DOT \. l, c]
+                    [\ID \pipe l, c]
+                    [\ID \Shell l, c]
+                    [\CALL( \( l, c]
+                @count-lines \|
+                i++
+            | \< \>
+                with code.substr(i, 2)
+                    if .. in <[ <& >& >> ]>
+                    then handle-optr .. ; i += 2
+                    else handle-optr ch ; i += 1
+            | \\\
+                if code.charAt(i + 1) is \\n
+                    # backslash can only escape newline
+                    @count-lines \\\\n # count both backslash and newline
+                    i += 2
+                    continue
+                # all other cases take it literally
+                fallthrough
+            default
+                [whole, word] = (PLAIN_WORD <<< last-index: i).exec code
+                [l, c] = [@line, @column]
+                if word
+                  tokens.push do
+                      [\STRNUM, @string \' word; l, c]
+                      [\, \, l, c]
+                if not whole then @carp "bad shell expression (WTF?)"
+                @count-lines whole
+                i += whole.length
+        @carp "missing `#end`"
+
+        # building blocks
+        ~!function handle-optr(ch)
+            i += ch
+            console.log "pretend we have handled #ch"
+            # TODO
+        ~!function handle-nested(inter, inter-shell)
+            # skip open `(` of nested expression
+            if not inter-shell
+                @count-lines code.substr(i, inter.length)
+                i += inter.length
+            sub-begin = i
+            [sub-begin-l, sub-begin-c] = [@line, @column]
+            sub-code = code.slice sub-begin
+            sub-lexer = exports with {inter, inter-shell, @emender}
+            nested = sub-lexer.tokenize sub-code,
+                {@line, @column, +raw}
+            sub-end = code.length - sub-lexer.rest.length
+            @count-lines code.slice(sub-begin, sub-end)
+            [sub-end-l, sub-end-c] = [@line, @column - 1]
             while nested.0?.0 is 'NEWLINE' then nested.shift!
             if nested.length
-                nested.unshift ['(' '(' old-line, old-column]
-                nested.push    [')' ')' @line, @column-1]
-                parts.push ['TOKENS' nested]
-            [old-line, old-column] = [@line, @column]
-            pos += delta
-            i = -1
-        @carp "missing `#end`"
+                tokens.push [\(, \(, sub-begin-l, sub-begin-c]
+                for token in nested
+                    tokens.push token, [\, \, token.2, token.3]
+                tokens.push [\), \), sub-end-l, sub-end-c]
+            i += sub-end - sub-begin
+        ~!function done
+            init-call = if blocking then \Shell else \ShellBg
+            [close-l, close-c] = [@line, @column]
+            if blocking then @tokens.push do
+                [\(, \(, open-l, open-c]
+                [\YIELD, \await, open-l, open-c]
+            @tokens.push do
+                [\(, \(, open-l, open-c]
+                [\ID, init-call, open-l, open-c]
+                [\CALL(, \(, open-l, open-c]
+            @tokens.push ...tokens
+            @tokens.push do
+                [\)CALL, \), close-l, close-c]
+                [\), \), close-l, close-c]
+            if blocking then @tokens.push do
+                [\), \), close-l, close-c]
 
     add-interpolated-shell: !(parts, nlines, end) ->
         {tokens, last} = this
@@ -1511,3 +1563,22 @@ ARG = CHAIN ++ <[ ... UNARY YIELD CREMENT PARAM( FUNCTION GENERATOR
 # Tokens that expect INDENT on the right.
 BLOCK_USERS = <[ , : -> ELSE ASSIGN IMPORT UNARY DEFAULT TRY FINALLY
                  HURL DECL DO LET FUNCTION GENERATOR ]>
+
+# LSCH {{{
+LSCH_PLAIN_WORD = //
+    \s* # whitespace
+    ((?:
+        [^\s$&'"()|<>\\] # non-magic char
+        |\\(?!\n) # exposed backslash that doesn't escape newline
+    )*)
+    \s* # whitespace
+//g
+LSCH_PLAIN_WORD_LINE = //
+    [\t\ ]* # whitespace
+    ((?:
+        [^\s$&'"()|<>\\] # non-magic char
+        |\\(?!\n) # exposed backslash that doesn't escape newline
+    )*)
+    [\t\ ]* # whitespace
+//g
+# }}}
