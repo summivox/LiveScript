@@ -36,24 +36,28 @@ parser <<<
 
 
 
+
 src = '''
-if excited
+do ->>
   for i til 10
     `ls
-    `ls | grep b
+    `ls | grep b | sort`
+  if excited
     `foo` .pipe `bar
-    `foo` .pipe `bar`
+    `foo2` .pipe `bar2`
     `long long long \\
       is too long\\
       for gcc
-$(rm -rf (a b c [d, e, f]) gh/ijk)
+&(rm -rf (a b c [d, e, f]) gh/ijk)
+`rm abc &`
 $(rm -rf (a + b(c)) ~/de/fgh/ijk)
 $(rm (a + $(b) .pipe $(c d)) $(e f g) (h + $((i + $(j)))) 'k l m \\n')
 $(sleep 5 (async: true))
-#$"ls"
 '''
+#lexed-raw = lexer.lex src, raw: true
+#console.log lexed-raw
 lexed = lexer.lex src
-console.log lexed
+#console.log lexed
 ast = parser.parse lexed
 compiled = ast.compile-root {}
 console.log compiled.toString!

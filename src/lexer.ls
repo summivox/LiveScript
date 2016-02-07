@@ -838,7 +838,7 @@ exports <<<
 
         # blocking call: `await Shell(...)`
         # non-blocking call: `ShellBg(...)`
-        blocking = open in <[ &( ` ]>#
+        blocking = open in <[ $( ` ]>#
 
         # unescaped EOL implicitly closes backtick, so plain word must not skip EOL
         PLAIN_WORD = if open is \` then LSCH_PLAIN_WORD_LINE else LSCH_PLAIN_WORD
@@ -850,8 +850,11 @@ exports <<<
                 if close0 is '`' and ch is \\n then close = \\n
                 if close is code.substr(i, close.length)
                     done!
-                    return i - offset + close.length
-                @count-lines ch
+                    if close is \\n
+                        return i - offset
+                    else
+                        @count-lines close
+                        return i - offset + close.length
                 i++
             | \$ \&
                 if code.char-at(i + 1) is \( then handle-nested \), true # shell
@@ -864,9 +867,9 @@ exports <<<
             | \|
                 [l, c] = [@line, @column]
                 tokens.push do
-                    [\)CALL \) l, c]
+                    [\)CALL \) l, c] |> spaced
                     [\DOT \. l, c]
-                    [\ID \pipe l, c]
+                    [\ID \pipe l, c] |> spaced
                     [\ID \Shell l, c]
                     [\CALL( \( l, c]
                 @count-lines \|
@@ -889,14 +892,14 @@ exports <<<
                 [l, c] = [@line, @column]
                 if word
                   tokens.push do
-                      [\STRNUM, @string \' word; l, c]
-                      [\, \, l, c]
-                if not whole then @carp "bad shell expression (WTF?)"
+                    [\STRNUM, @string \' word; l, c]
+                    [\, \, l, c]
                 @count-lines whole
                 i += whole.length
         @carp "missing `#end`"
 
         # building blocks
+        function spaced(ch) => with ch => ..spaced = true
         ~!function handle-optr(ch)
             i += ch
             console.log "pretend we have handled #ch"
@@ -919,8 +922,10 @@ exports <<<
             if nested.length
                 tokens.push [\(, \(, sub-begin-l, sub-begin-c]
                 for token in nested
-                    tokens.push token, [\, \, token.2, token.3]
-                tokens.push [\), \), sub-end-l, sub-end-c]
+                    tokens.push token
+                tokens.push do
+                    [\), \), sub-end-l, sub-end-c]
+                    [\, \, sub-end-l, sub-end-c]
             i += sub-end - sub-begin
         ~!function done
             init-call = if blocking then \Shell else \ShellBg
@@ -938,21 +943,7 @@ exports <<<
                 [\), \), close-l, close-c]
             if blocking then @tokens.push do
                 [\), \), close-l, close-c]
-
-    add-interpolated-shell: !(parts, nlines, end) ->
-        {tokens, last} = this
-        callable = @adi!
-        tokens.push ['ID', '$', last.2, last.3]
-        tokens.push ['CALL(', '(', last.2, last.3]
-        for t, i in parts
-            if t.0 is 'TOKENS'
-                tokens.push ...t.1
-            else
-                continue if i > 1 and not t.1
-                tokens.push ['STRNUM' nlines @string "'" t.1; t.2, t.3]
-            tokens.push [',' ',' tokens[*-1].2, tokens[*-1].3]
-        tokens.pop!
-        @token ')CALL', ')', callable
+            @last = @tokens[*-1]
 
     # }}}
 
@@ -1568,7 +1559,7 @@ BLOCK_USERS = <[ , : -> ELSE ASSIGN IMPORT UNARY DEFAULT TRY FINALLY
 LSCH_PLAIN_WORD = //
     \s* # whitespace
     ((?:
-        [^\s$&'"()|<>\\] # non-magic char
+        [^\s$&`'"()|<>\\] # non-magic char
         |\\(?!\n) # exposed backslash that doesn't escape newline
     )*)
     \s* # whitespace
@@ -1576,7 +1567,7 @@ LSCH_PLAIN_WORD = //
 LSCH_PLAIN_WORD_LINE = //
     [\t\ ]* # whitespace
     ((?:
-        [^\s$&'"()|<>\\] # non-magic char
+        [^\s$&`'"()|<>\\] # non-magic char
         |\\(?!\n) # exposed backslash that doesn't escape newline
     )*)
     [\t\ ]* # whitespace
