@@ -844,7 +844,7 @@ exports <<<
         PLAIN_WORD = if open is \` then LSCH_PLAIN_WORD_LINE else LSCH_PLAIN_WORD
 
         # scan
-        loop
+        while i < code.length
             switch ch = code.charAt i
             | \\n, close0
                 if close0 is '`' and ch is \\n then close = \\n
