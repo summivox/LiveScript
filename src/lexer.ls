@@ -896,12 +896,11 @@ exports <<<
                     [\, \, l, c]
                 @count-lines whole
                 i += whole.length
-        @carp "missing `#end`"
+        @carp "missing `#close`"
 
         # building blocks
         function spaced(ch) => with ch => ..spaced = true
         ~!function handle-optr(ch)
-            i += ch
             console.log "pretend we have handled #ch"
             # TODO
         ~!function handle-nested(inter, inter-shell)
