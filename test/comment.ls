@@ -158,6 +158,25 @@ obj = {
 /* trailing top level comment */
 ''', {+bare,-header}
 
+eq '''
+var A;
+A = (function(){
+  var prototype = A.prototype, constructor = A;
+  A.displayName = 'A'
+  /**
+   * @constructor
+   */
+  function A(){}
+  return A;
+}());
+''', LiveScript.compile '''
+class A
+  /**
+   * @constructor
+   */
+  ->
+''', {+bare,-header}
+
 
 # Block comments within non-statement `if`s.
 eq void, if true then /* 1 */

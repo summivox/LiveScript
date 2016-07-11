@@ -2110,8 +2110,8 @@ class exports.Class extends Node
         if @mixins
             imports = for args.* in that
                 Import proto, JS("arguments[#{args.length-1}]"), true
-            body.prepend ...imports
-        body.prepend Literal "#name.displayName = '#name'" if fun.cname and not @sup
+            body.lines.unshift ...imports
+        body.lines.unshift JS "#name.displayName = '#name'" if fun.cname and not @sup
         clas = Parens Call.make(fun, args), true
         clas = Assign vname, clas if decl and title.is-complex!
         clas = Assign title, clas if title
